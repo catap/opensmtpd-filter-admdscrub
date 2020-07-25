@@ -1,0 +1,54 @@
+.\"	$OpenBSD$
+.\"
+.\" Copyright (c) 2019 Martijn van Duren <martijn@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate$
+.Dt FILTER-ADMDSCRUB 8
+.Os
+.Sh NAME
+.Nm filter-admdscrub
+.Nd Administrative Management Domain scrubber.
+.Sh SYNOPSIS
+.Nm
+.Op Fl rv
+.Op Fl a Ar authserv-id
+.Sh DESCRIPTION
+.Nm
+checks the mail for
+.Ql Authentication-Results
+headers in the requested
+.Ar authserv-id
+domain and removes them.
+This filter is intended to be used as the first filter at a border MTA.
+This should prevent utilization of these headers in further filters or MTAs when
+they don't originate from within it's own trusted domain.
+The
+.Fl r
+flag can be set to reject mails containing these headers.
+If
+.Ar authserv-id
+is not specified it defaults to the system hostname.
+For more verbose logging the
+.Fl v
+flag can be used.
+.Sh SEE ALSO
+.Xr smtpd 8
+.Sh STANDARDS
+.Rs
+.%A M. Kucherawy
+.%D May 2019
+.%R RFC 8601
+.%T Message Header Field for Indicating Message Authentication Status
+.Re
