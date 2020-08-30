@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "opensmtpd.h"
+#include "mheader.h"
 
 struct admd_message {
 	int foundmatch;
@@ -31,6 +32,7 @@ struct admd_message {
 	int parsing_headers;
 	char **cache;
 	size_t cachelen;
+	size_t headerlen;
 };
 
 void usage(void);
@@ -43,7 +45,7 @@ void admd_cache(struct admd_message *, const char *);
 const char *admd_authservid(struct admd_message *);
 void admd_freecache(struct admd_message *);
 
-char authservid[256] = "";
+char authservid[256];
 int reject = 0;
 int verbose = 0;
 
@@ -52,13 +54,11 @@ main(int argc, char *argv[])
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "a:rv")) != -1) {
+	if (pledge("stdio", NULL) == -1)
+		osmtpd_err(1, "pledge");
+
+	while ((ch = getopt(argc, argv, "rv")) != -1) {
 		switch (ch) {
-		case 'a':
-			if (strlcpy(authservid, optarg, sizeof(authservid)) >=
-			    sizeof(authservid))
-				osmtpd_errx(1, "authserv-id is too long");
-			break;
 		case 'r':
 			reject = 1;
 			break;
@@ -69,11 +69,15 @@ main(int argc, char *argv[])
 			usage();
 		}
 	}
-
-	if (pledge("stdio", NULL) == -1)
-		osmtpd_err(1, "pledge");
-
-	if (authservid[0] == '\0') {
+	argc -= optind;
+	argv += optind;
+	if (argc > 1)
+		osmtpd_errx(1, "invalid authservid count");
+	if (argc == 1) {
+		if (strlcpy(authservid, argv[0], sizeof(authservid)) >=
+		    sizeof(authservid))
+			osmtpd_errx(1, "authserv-id is too long");
+	} else {
 		if (gethostname(authservid, sizeof(authservid)) == -1)
 			osmtpd_err(1, "gethostname");
 	}
@@ -103,6 +107,7 @@ admd_message_new(struct osmtpd_ctx *ctx)
 	msg->parsing_headers = 1;
 	msg->cache = NULL;
 	msg->cachelen = 0;
+	msg->headerlen = 0;
 
 	return msg;
 }
@@ -138,7 +143,10 @@ admd_dataline(struct osmtpd_ctx *ctx, const char *orig)
 		if (line[0] != ' ' && line[0] != '\t') {
 			if (msg->inheader) {
 				msgauthid = admd_authservid(msg);
-				if (strcmp(msgauthid, authservid) == 0)
+				if (msgauthid == NULL && errno != EINVAL)
+					return;
+				if (msgauthid != NULL &&
+				    strcmp(msgauthid, authservid) == 0)
 					msg->foundmatch = 1;
 				else {
 					for (i = 0; i < msg->cachelen; i++)
@@ -149,12 +157,17 @@ admd_dataline(struct osmtpd_ctx *ctx, const char *orig)
 			}
 			msg->inheader = 0;
 		}
-		if (strncmp(line, "Authentication-Results:", 23) == 0) {
-			msg->inheader = 1;
-			admd_cache(msg, orig);
-			return;
-		}
-		if (msg->inheader && (line[0] == ' ' || line[0] == '\t')) {
+		if (strncasecmp(line, "Authentication-Results", 22) == 0) {
+			line += 22;
+			while (line[0] == ' ' || line[0] == '\t')
+				line++;
+			if (line++[0] == ':') {
+				msg->inheader = 1;
+				admd_cache(msg, orig);
+				return;
+			}
+		} else if (msg->inheader &&
+		    (line[0] == ' ' || line[0] == '\t')) {
 			admd_cache(msg, orig);
 			return;
 		}
@@ -218,114 +231,53 @@ admd_cache(struct admd_message *msg, const char *line)
 		admd_err(msg, "strdup");
 	}
 	msg->cachelen++;
+	msg->headerlen += strlen(line[0] == '.' ? line + 1 : line);
 	return;
 }
 
 const char *
 admd_authservid(struct admd_message *msg)
 {
-	static char msgauthid[sizeof(authservid)];
-	const char *header;
+	char *header0, *header, *line, *end;
+	size_t headerlen;
 	size_t i = 0;
-	int depth = 0;
 	
-	msgauthid[0] = '\0';
-
-	header = msg->cache[0];
-
-	if (header[0] == '.')
-		header++;
+	headerlen = msg->headerlen + (msg->cachelen * 2) + 1;
+	header0 = header = malloc(headerlen);
+	if (header == NULL) {
+		admd_err(msg, "malloc");
+		return NULL;
+	}
+	header[0] = '\0';
+	for (i = 0; i < msg->cachelen; i++) {
+		line = msg->cache[i];
+		if (line[0] == '.')
+			line++;
+		if (strlcat(header, line, headerlen) >= headerlen ||
+		    strlcat(header, "\r\n", headerlen) >= headerlen) {
+			osmtpd_errx(1, "miscalculated header\n");
+			exit(1);
+		}
+	}
 
 	/* Skip key */
-	header += 23;
-
-	/* CFWS */
-	/*
-	 * Take the extremely loose approach with both FWS and comment so we
-	 * might match a non fully complient comment and still get the right
-	 * authserv-id
-	 */
-fws:
+	header += 22;
 	while (header[0] == ' ' || header[0] == '\t')
 		header++;
-	if (header[0] == '\0') {
-		if (++i >= msg->cachelen)
-			return msgauthid;
-		header = msg->cache[i];
-		/* For leniency allow multiple consequtive FWS */
-		goto fws;
+	/* : */
+	header++;
+
+	header = osmtpd_mheader_skip_cfws(header, 1);
+
+	if ((end = osmtpd_mheader_skip_value(header, 0)) == NULL) {
+		errno = EINVAL;
+		free(header0);
+		return NULL;
 	}
-	/* comment */
-	if (header[0] == '(') {
-		depth++;
-		header++;
-	}
-	if (depth > 0) {
-		while (1) {
-			/*
-			 * consume a full quoted-pair, which may contain
-			 * parentheses
-			 */
-			if (header[0] == '"') {
-				header++;
-				while (header[0] != '"') {
-					if (header[0] == '\\')
-						header++;
-					if (header[0] == '\0') {
-						if (++i >= msg->cachelen) {
-							return msgauthid;
-						}
-						header = msg->cache[i];
-					} else
-						header++;
-				}
-				header++;
-			/* End of comment */
-			} else if (header[0] == ')') {
-				header++;
-				if (--depth == 0)
-					goto fws;
-			} else if (header[0] == '(') {
-				header++;
-				depth++;
-			} else if (header[0] == '\0') {
-				if (++i >= msg->cachelen)
-					return msgauthid;
-				header = msg->cache[i];
-			} else
-				header++;
-		}
-	}
-	/* Quoted-string */
-	if (header[0] == '"') {
-		header++;
-		for (i = 0; header[0] != '"' && header[0] != '\0' &&
-		    i < sizeof(msgauthid); i++, header++) {
-			if (header[0] == '\\')
-				header++;
-			/* Don't do Newline at all */
-			if (header[0] == '\0') {
-				i = 0;
-				break;
-			}
-			msgauthid[i] = header[0];
-		}
-	/* token */
-	} else {
-		/*
-		 * Be more lenient towards token to hit more
-		 * edgecases
-		 */
-		for (i = 0; header[i] != ' ' && header[i] != '\t' &&
-		    header[i] != ';' && header[i] != '\0' &&
-		    i < sizeof(msgauthid); i++)
-			msgauthid[i] = header[i];
-	}
-	/* If we overflow we simply don't match */
-	if (i == sizeof(msgauthid))
-		i = 0;
-	msgauthid[i] = '\0';
-	return msgauthid;
+	memmove(header0, header, end - header);
+	header0[end - header] = '\0';
+
+	return header0;
 }
 
 void
@@ -338,6 +290,7 @@ admd_freecache(struct admd_message *msg)
 	free(msg->cache);
 	msg->cache = NULL;
 	msg->cachelen = 0;
+	msg->headerlen = 0;
 }
 
 __dead void
