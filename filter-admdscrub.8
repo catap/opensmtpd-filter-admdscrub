@@ -39,12 +39,14 @@ The
 flag can be set to reject mails containing these headers.
 If
 .Ar authserv-id
-is not specified it defaults to the system hostname.
+is not specified it defaults to opensmtpd's
+.Ic admd
+option.
 For more verbose logging the
 .Fl v
 flag can be used.
 .Sh SEE ALSO
-.Xr smtpd 8
+.Xr smtpd.conf 5
 .Sh STANDARDS
 .Rs
 .%A M. Kucherawy

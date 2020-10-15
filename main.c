@@ -36,6 +36,7 @@ struct admd_message {
 };
 
 void usage(void);
+void admd_conf(const char *, const char *);
 void *admd_message_new(struct osmtpd_ctx *);
 void admd_message_free(struct osmtpd_ctx *, void *);
 void admd_dataline(struct osmtpd_ctx *, const char *);
@@ -45,7 +46,7 @@ void admd_cache(struct admd_message *, const char *);
 const char *admd_authservid(struct admd_message *);
 void admd_freecache(struct admd_message *);
 
-char authservid[256];
+char *authservid;
 int reject = 0;
 int verbose = 0;
 
@@ -73,24 +74,30 @@ main(int argc, char *argv[])
 	argv += optind;
 	if (argc > 1)
 		osmtpd_errx(1, "invalid authservid count");
-	if (argc == 1) {
-		if (strlcpy(authservid, argv[0], sizeof(authservid)) >=
-		    sizeof(authservid))
-			osmtpd_errx(1, "authserv-id is too long");
-	} else {
-		if (gethostname(authservid, sizeof(authservid)) == -1)
-			osmtpd_err(1, "gethostname");
-	}
-	if (strchr(authservid, '\r') != NULL ||
-	    strchr(authservid, '\n') != NULL)
-		osmtpd_errx(1, "ubsupported character in authserv-id");
+	if (argc == 1)
+		authservid = argv[0];
 
 	osmtpd_local_message(admd_message_new, admd_message_free);
 	osmtpd_register_filter_dataline(admd_dataline);
 	osmtpd_register_filter_commit(admd_commit);
+	osmtpd_register_conf(admd_conf);
 	osmtpd_run();
 
 	return 0;
+}
+
+void
+admd_conf(const char *key, const char *value)
+{
+	if (key == NULL) {
+		if (authservid == NULL)
+			osmtpd_errx(1, "Didn't receieve admd config option");
+		return;
+	}
+	if (strcmp(key, "admd") == 0 && authservid == NULL) {
+		if ((authservid = strdup(value)) == NULL)
+			osmtpd_err(1, "malloc");
+	}
 }
 
 void *
