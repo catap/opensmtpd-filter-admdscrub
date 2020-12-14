@@ -91,7 +91,7 @@ admd_conf(const char *key, const char *value)
 {
 	if (key == NULL) {
 		if (authservid == NULL)
-			osmtpd_errx(1, "Didn't receieve admd config option");
+			osmtpd_errx(1, "Didn't receive admd config option");
 		return;
 	}
 	if (strcmp(key, "admd") == 0 && authservid == NULL) {
