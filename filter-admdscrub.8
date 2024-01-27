@@ -22,7 +22,7 @@
 .Nd Administrative Management Domain scrubber
 .Sh SYNOPSIS
 .Nm
-.Op Fl rv
+.Op Fl rvs
 .Op Ar authserv-id
 .Sh DESCRIPTION
 .Nm
@@ -41,7 +41,9 @@ If
 .Ar authserv-id
 is not specified it defaults to opensmtpd's
 .Ic admd
-option.
+option. The
+.Fl s
+flag can be set to remove X-Spam header as well.
 For more verbose logging the
 .Fl v
 flag can be used.

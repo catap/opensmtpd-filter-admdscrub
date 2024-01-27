@@ -49,6 +49,7 @@ void admd_freecache(struct admd_message *);
 
 char *authservid;
 int reject = 0;
+int spam = 0;
 int verbose = 0;
 
 int
@@ -59,10 +60,13 @@ main(int argc, char *argv[])
 	if (pledge("stdio", NULL) == -1)
 		osmtpd_err(1, "pledge");
 
-	while ((ch = getopt(argc, argv, "rv")) != -1) {
+	while ((ch = getopt(argc, argv, "rvs")) != -1) {
 		switch (ch) {
 		case 'r':
 			reject = 1;
+			break;
+		case 's':
+			spam = 1;
 			break;
 		case 'v':
 			verbose++;
@@ -178,6 +182,13 @@ admd_dataline(struct osmtpd_ctx *ctx, const char *orig)
 		    (line[0] == ' ' || line[0] == '\t')) {
 			admd_cache(msg, orig);
 			return;
+		} else if (spam && strncasecmp(line, "X-Spam", 6) == 0) {
+			line += 22;
+			while (line[0] == ' ' || line[0] == '\t')
+				line++;
+			if (line++[0] == ':') {
+				return;
+			}
 		}
 	}
 
@@ -304,6 +315,6 @@ admd_freecache(struct admd_message *msg)
 __dead void
 usage(void)
 {
-	fprintf(stderr, "usage: filter-admdscrub [-rv] [-a authserv-id]\n");
+	fprintf(stderr, "usage: filter-admdscrub [-rvs] [authserv-id]\n");
 	exit(1);
 }
