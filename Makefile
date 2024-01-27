@@ -8,6 +8,7 @@ MANDIR=	${LOCALBASE}/man/man
 SRCS+=	main.c mheader.c
 
 CFLAGS+=-I${LOCALBASE}/include
+CFLAGS+=-I${.CURDIR}/openbsd-compat
 CFLAGS+=-Wall -I${.CURDIR}
 CFLAGS+=-Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=-Wmissing-declarations
