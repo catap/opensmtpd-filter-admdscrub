@@ -154,7 +154,7 @@ admd_dataline(struct osmtpd_ctx *ctx, const char *orig)
 		line++;
 	if (msg->parsing_headers) {
 		if (line[0] != ' ' && line[0] != '\t') {
-			if (msg->inheader) {
+			if (msg->cache) {
 				msgauthid = admd_authservid(msg);
 				if (msgauthid == NULL && errno != EINVAL)
 					return;
@@ -181,15 +181,12 @@ admd_dataline(struct osmtpd_ctx *ctx, const char *orig)
 			}
 		} else if (msg->inheader &&
 		    (line[0] == ' ' || line[0] == '\t')) {
-			admd_cache(msg, orig);
+			if (msg->cache)
+				admd_cache(msg, orig);
 			return;
 		} else if (spam && strncasecmp(line, "X-Spam", 6) == 0) {
-			line += 22;
-			while (line[0] == ' ' || line[0] == '\t')
-				line++;
-			if (line++[0] == ':') {
-				return;
-			}
+			msg->inheader = 1;
+			return;
 		}
 	}
 
