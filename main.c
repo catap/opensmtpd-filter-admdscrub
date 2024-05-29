@@ -48,7 +48,7 @@ void admd_cache(struct admd_message *, const char *);
 const char *admd_authservid(struct admd_message *);
 void admd_freecache(struct admd_message *);
 
-char *authservid;
+char *authservid = NULL;
 int reject = 0;
 int spam = 0;
 int verbose = 0;
